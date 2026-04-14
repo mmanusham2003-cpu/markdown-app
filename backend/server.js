@@ -1,71 +1,79 @@
 const express = require('express');
 const cors = require('cors');
-const sqlite3 = require('sqlite3').verbose();
+const Database = require('better-sqlite3');
 
 const app = express();
+const db = new Database('notes.db');
+
 app.use(cors());
 app.use(express.json());
 
-// Database setup
-const db = new sqlite3.Database('./notes.db');
-
-db.run(`
+// Create table if not exists
+db.prepare(`
   CREATE TABLE IF NOT EXISTS notes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT,
     content TEXT
   )
-`);
+`).run();
 
 // Test route
 app.get('/', (req, res) => {
   res.send("Backend running 🚀");
 });
 
-// Start server
-app.listen(5000, () => {
-  console.log("Server running on http://localhost:5000");
-});
 // GET all notes
 app.get('/notes', (req, res) => {
-  db.all("SELECT * FROM notes", [], (err, rows) => {
-    if (err) return res.status(500).json(err);
+  try {
+    const rows = db.prepare("SELECT * FROM notes").all();
     res.json(rows);
-  });
+  } catch (error) {
+    res.status(500).json(error);
+  }
 });
 
 // CREATE a note
 app.post('/notes', (req, res) => {
-  const { title, content } = req.body;
+  try {
+    const { title, content } = req.body;
 
-  db.run(
-    "INSERT INTO notes (title, content) VALUES (?, ?)",
-    [title, content],
-    function (err) {
-      if (err) return res.status(500).json(err);
-      res.json({ id: this.lastID });
-    }
-  );
+    const result = db
+      .prepare("INSERT INTO notes (title, content) VALUES (?, ?)")
+      .run(title, content);
+
+    res.json({ id: result.lastInsertRowid });
+  } catch (error) {
+    res.status(500).json(error);
+  }
 });
 
 // UPDATE a note
 app.put('/notes/:id', (req, res) => {
-  const { title, content } = req.body;
+  try {
+    const { title, content } = req.body;
 
-  db.run(
-    "UPDATE notes SET title=?, content=? WHERE id=?",
-    [title, content, req.params.id],
-    (err) => {
-      if (err) return res.status(500).json(err);
-      res.json({ message: "Updated" });
-    }
-  );
+    db.prepare(
+      "UPDATE notes SET title = ?, content = ? WHERE id = ?"
+    ).run(title, content, req.params.id);
+
+    res.json({ message: "Updated" });
+  } catch (error) {
+    res.status(500).json(error);
+  }
 });
 
 // DELETE a note
 app.delete('/notes/:id', (req, res) => {
-  db.run("DELETE FROM notes WHERE id=?", [req.params.id], (err) => {
-    if (err) return res.status(500).json(err);
+  try {
+    db.prepare("DELETE FROM notes WHERE id = ?").run(req.params.id);
     res.json({ message: "Deleted" });
-  });
+  } catch (error) {
+    res.status(500).json(error);
+  }
+});
+
+// Start server
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
